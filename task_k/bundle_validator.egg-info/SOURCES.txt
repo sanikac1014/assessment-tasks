@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+bundle_validator/__init__.py
+bundle_validator/models.py
+bundle_validator/validator.py
+bundle_validator.egg-info/PKG-INFO
+bundle_validator.egg-info/SOURCES.txt
+bundle_validator.egg-info/dependency_links.txt
+bundle_validator.egg-info/requires.txt
+bundle_validator.egg-info/top_level.txt
+tests/test_validator.py

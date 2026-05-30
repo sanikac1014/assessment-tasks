@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: treatment-effect
+Version: 0.1.0
+Requires-Python: >=3.11
+Requires-Dist: pydantic>=2.0
+Requires-Dist: pandas
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: scikit-learn
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: jupyter; extra == "dev"
+Requires-Dist: matplotlib; extra == "dev"

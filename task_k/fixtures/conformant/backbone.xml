@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ectd version="3.2.2">
+  <m1><leaf href="m1/regional/cover-letter.txt"/></m1>
+  <m2><leaf href="m2/summaries/overview.txt"/></m2>
+  <m3><leaf href="m3/quality/cmc-report.txt"/></m3>
+  <m4><leaf href="m4/nonclinical/tox-study.txt"/></m4>
+  <m5><leaf href="m5/clinical/study-001.txt"/></m5>
+</ectd>

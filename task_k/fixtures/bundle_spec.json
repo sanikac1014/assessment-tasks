@@ -1,0 +1,37 @@
+{
+  "modules": {
+    "m1": {
+      "description": "Regional Administrative",
+      "required_subfolders": ["regional"],
+      "optional_subfolders": [],
+      "file_patterns": ["\\.(pdf|xml|txt)$"]
+    },
+    "m2": {
+      "description": "CTD Summaries",
+      "required_subfolders": ["summaries"],
+      "optional_subfolders": [],
+      "file_patterns": ["\\.(pdf|txt)$"]
+    },
+    "m3": {
+      "description": "Quality",
+      "required_subfolders": ["quality"],
+      "optional_subfolders": [],
+      "file_patterns": ["\\.(pdf|txt)$"]
+    },
+    "m4": {
+      "description": "Nonclinical Study Reports",
+      "required_subfolders": ["nonclinical"],
+      "optional_subfolders": [],
+      "file_patterns": ["\\.(pdf|txt)$"]
+    },
+    "m5": {
+      "description": "Clinical Study Reports",
+      "required_subfolders": ["clinical"],
+      "optional_subfolders": [],
+      "file_patterns": ["\\.(pdf|txt)$"]
+    }
+  },
+  "checksum_algorithm": "md5",
+  "manifest_filename": "manifest.md5",
+  "backbone_filename": "backbone.xml"
+}

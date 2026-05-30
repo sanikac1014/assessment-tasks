@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+schema_diff/__init__.py
+schema_diff/differ.py
+schema_diff/models.py
+schema_diff.egg-info/PKG-INFO
+schema_diff.egg-info/SOURCES.txt
+schema_diff.egg-info/dependency_links.txt
+schema_diff.egg-info/requires.txt
+schema_diff.egg-info/top_level.txt
+tests/test_schema_diff.py

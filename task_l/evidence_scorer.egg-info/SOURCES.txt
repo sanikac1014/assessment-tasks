@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+evidence_scorer/__init__.py
+evidence_scorer/models.py
+evidence_scorer/rubric.py
+evidence_scorer/scorer.py
+evidence_scorer.egg-info/PKG-INFO
+evidence_scorer.egg-info/SOURCES.txt
+evidence_scorer.egg-info/dependency_links.txt
+evidence_scorer.egg-info/requires.txt
+evidence_scorer.egg-info/top_level.txt
+tests/test_scorer.py

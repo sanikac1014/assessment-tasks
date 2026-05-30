@@ -1,0 +1,25 @@
+sources:
+  source_a:
+    capacity: 10.0
+    refill_rate: 5.0    # 5 tokens/sec
+
+  source_b:
+    capacity: 5.0
+    refill_rate: 2.0
+
+  source_c:
+    capacity: 20.0
+    refill_rate: 10.0
+
+  source_d:
+    capacity: 3.0
+    refill_rate: 1.0
+
+  source_e:
+    capacity: 8.0
+    refill_rate: 4.0
+
+queue:
+  max_in_flight: 500
+  max_retries: 3
+  dedup_window: 10000

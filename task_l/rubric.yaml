@@ -1,0 +1,47 @@
+# Evidence-grade scoring rubric
+# All weights must sum to 1.0
+
+design_base_scores:
+  META_ANALYSIS: 1.0
+  RCT: 0.85
+  PROSPECTIVE_COHORT: 0.65
+  CASE_CONTROL: 0.50
+  CROSS_SECTIONAL: 0.35
+  CASE_SERIES: 0.20
+  MECHANISTIC_ONLY: 0.10
+  EXPERT_OPINION: 0.05
+
+replication_bonus:
+  per_replication: 0.05   # added per independent replication
+  cap: 0.30               # maximum total replication bonus
+
+sample_size_weight: 1.0   # scales the sigmoid output
+sample_size_scale: 200    # sigmoid midpoint (n=200 → 0.5)
+
+effect_size_weight: 1.0   # scales abs(effect_size) capped at 1
+
+ci_width_penalty_weight: 0.5   # wider CI → larger penalty
+
+preregistered_bonus: 0.10
+
+bias_penalties:
+  LOW: 0.0
+  MODERATE: 0.10
+  HIGH: 0.30
+
+# dimension weights (must sum to 1.0)
+weights:
+  design: 0.35
+  sample_size: 0.20
+  effect: 0.15
+  ci_penalty: 0.10
+  preregistered: 0.10
+  bias_penalty: 0.10
+
+# minimum score to reach each tier
+tier_thresholds:
+  SPECULATIVE: 0.0
+  EMERGING: 0.18
+  SUPPORTED: 0.35
+  WELL_REPLICATED: 0.55
+  CONSENSUS: 0.73
