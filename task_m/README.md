@@ -51,7 +51,7 @@ The simplest estimator: subtract the mean outcome of control from the mean outco
 ### IPTW — Inverse Probability of Treatment Weighting
 Fits a logistic regression model to estimate each unit's propensity to receive treatment given their covariates: P(T=1|X). Treated units are weighted by 1/P(T=1|X) and control units by 1/P(T=0|X), creating a pseudo-population where treatment assignment is independent of covariates. The weighted difference-in-means then estimates the average treatment effect.
 
-**Assumption:** positivity — every unit must have P(T=1|X) strictly between 0 and 1. The module checks this before estimating and returns a `PositivityViolation` if the propensity scores are too extreme, rather than silently producing an unstable estimate.
+**Assumption:** positivity — every unit must have P(T=1|X) strictly between 0 and 1. The module checks this before estimating and returns a `PositivityViolation` if the propensity scores are too extreme, rather than silently producing an unstable estimate. `recover_known_truth` routes through the same check: when overlap is too low, it sets `iptw_positivity_ok=False` and returns `iptw_ate=None` rather than reporting a biased weighted estimate without warning.
 
 ### G-computation (outcome regression)
 Fits a linear regression model for the outcome using both covariates and the treatment indicator as inputs. Then predicts each unit's potential outcome under treatment (T=1) and under control (T=0) using the fitted model. The ATE is the mean difference between those two potential-outcome predictions.
@@ -59,7 +59,7 @@ Fits a linear regression model for the outcome using both covariates and the tre
 **Assumption:** correct model specification for the outcome regression. Does not require positivity, so it works even when propensity scores are extreme.
 
 ### Uncertainty
-All three methods include a bootstrap confidence interval (default 1000 resamples, configurable). Coverage of the true ATE is verified in the test suite: both IPTW and G-computation achieve ≥90% coverage across 30 simulated datasets at n=2000.
+All three methods include a bootstrap confidence interval (configurable via `n_bootstrap`, default 1000). Coverage of the true ATE is verified in the test suite: both IPTW and G-computation achieve ≥90% coverage across 50 repeated simulations at n=2000.
 
 ---
 

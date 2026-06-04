@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel
 
 
@@ -40,16 +40,17 @@ class RecoveryReport(BaseModel):
     n: int
     seed: int
     naive_ate: float
-    iptw_ate: float
+    iptw_ate: Optional[float] = None          # None when positivity is violated
     gcomp_ate: float
     true_ate: float
     naive_bias: float
-    iptw_bias: float
+    iptw_bias: Optional[float] = None
     gcomp_bias: float
-    iptw_ci: tuple[float, float]
+    iptw_ci: Optional[tuple[float, float]] = None
     gcomp_ci: tuple[float, float]
-    iptw_covers_truth: bool
+    iptw_covers_truth: Optional[bool] = None  # None when positivity is violated
     gcomp_covers_truth: bool
+    iptw_positivity_ok: bool = True
 
 
 class OverlapDiagnostic(BaseModel):

@@ -60,6 +60,12 @@ Column renames are detected using Python's `difflib.SequenceMatcher` on the lowe
 
 ## Worked Example
 
+## Provenance Hashing
+
+The `ProvenanceRecord` hashes schema **content**, not schema names. Each schema's fingerprint is a SHA-256 of its full column definitions (`Schema.fingerprint()`), so two structurally different schemas that happen to share a name produce different `old_schema_hash` / `new_schema_hash` values. Two runs of `provenance(plan)` on the same diff always produce the same `provenance_hash`.
+
+---
+
 ### Non-breaking migration
 Add a nullable `notes` column:
 ```sql

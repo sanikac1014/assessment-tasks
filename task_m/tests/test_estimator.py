@@ -175,28 +175,29 @@ def test_different_seed_different_report():
 # ── bootstrap coverage check ─────────────────────────────────────────────────
 
 def test_bootstrap_coverage_iptw():
-    """IPTW CI should cover the true ATE in most repeated simulations."""
+    """IPTW 95% CI covers the true ATE in ≥90% of repeated simulations at n=2000."""
     config = MILD_CONFIG
     covered = 0
-    runs = 30
+    runs = 50
     for seed in range(runs):
-        report = recover_known_truth(config, n=2000, seed=seed)
-        if report.iptw_covers_truth:
+        report = recover_known_truth(config, n=2000, seed=seed, n_bootstrap=200)
+        if report.iptw_covers_truth is True:
             covered += 1
     coverage = covered / runs
-    assert coverage >= 0.80, f"IPTW coverage too low: {coverage:.2f}"
+    assert coverage >= 0.90, f"IPTW coverage too low: {coverage:.2f}"
 
 
 def test_bootstrap_coverage_gcomp():
+    """G-computation 95% CI covers the true ATE in ≥90% of repeated simulations at n=2000."""
     config = MILD_CONFIG
     covered = 0
-    runs = 30
+    runs = 50
     for seed in range(runs):
-        report = recover_known_truth(config, n=2000, seed=seed)
+        report = recover_known_truth(config, n=2000, seed=seed, n_bootstrap=200)
         if report.gcomp_covers_truth:
             covered += 1
     coverage = covered / runs
-    assert coverage >= 0.80, f"G-comp coverage too low: {coverage:.2f}"
+    assert coverage >= 0.90, f"G-comp coverage too low: {coverage:.2f}"
 
 
 def test_naive_bias_larger_with_stronger_confounding():
@@ -212,3 +213,21 @@ def test_gcomp_ci_brackets_ate(mild_cohort):
     result = estimate_effect(treated, control, AdjustmentMethod.GCOMPUTATION, seed=0, n_bootstrap=200)
     assert isinstance(result, EffectEstimate)
     assert result.ci_lower <= result.ate <= result.ci_upper
+
+
+def test_recover_known_truth_surfaces_positivity_violation():
+    """recover_known_truth must flag IPTW as unusable when overlap is too low."""
+    config = TruthConfig(
+        true_ate=1.0,
+        confounder_effect_on_treatment=10.0,   # extreme confounding → near-zero overlap
+        confounder_effect_on_outcome=1.0,
+        base_outcome=0.0,
+        noise_std=0.5,
+        seed=0,
+    )
+    report = recover_known_truth(config, n=500, seed=0, n_bootstrap=50)
+    assert not report.iptw_positivity_ok
+    assert report.iptw_ate is None
+    assert report.iptw_covers_truth is None
+    # G-computation should still produce an estimate
+    assert report.gcomp_ate is not None

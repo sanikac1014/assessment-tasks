@@ -1,5 +1,5 @@
 import time
-from collections import deque
+from collections import deque, OrderedDict
 from typing import Callable, Optional
 
 from .models import (
@@ -54,7 +54,7 @@ class IngestQueue:
         self._sources: dict[str, RateBudget] = {}
         self._buckets: dict[str, TokenBucket] = {}
         self._queues: dict[str, deque] = {}          # source_id -> deque of (item_id, item, attempt)
-        self._seen_keys: dict[str, set[str]] = {}    # source_id -> set of idempotency keys
+        self._seen_keys: dict[str, OrderedDict] = {} # source_id -> ordered set of idempotency keys (FIFO eviction)
         self._in_flight: int = 0
         self._dead_letters: list[DeadLetter] = []
 
@@ -62,7 +62,7 @@ class IngestQueue:
         self._sources[source_id] = rate_budget
         self._buckets[source_id] = TokenBucket(rate_budget.capacity, rate_budget.refill_rate)
         self._queues[source_id] = deque()
-        self._seen_keys[source_id] = set()
+        self._seen_keys[source_id] = OrderedDict()
 
     def enqueue(self, source_id: str, item: IngestItem) -> EnqueueResult:
         if source_id not in self._sources:
@@ -79,11 +79,11 @@ class IngestQueue:
         if self._in_flight + total_queued >= self._max_in_flight:
             return EnqueueResult(status=EnqueueStatus.BACKPRESSURE_APPLIED, source_id=source_id)
 
-        # record the key and enqueue
-        if len(self._seen_keys[source_id]) >= self._dedup_window:
-            # evict oldest key — simple approach: clear and restart window
-            self._seen_keys[source_id] = set()
-        self._seen_keys[source_id].add(key)
+        # record the key with bounded FIFO eviction (evict one oldest, not the whole set)
+        od = self._seen_keys[source_id]
+        if len(od) >= self._dedup_window:
+            od.popitem(last=False)  # evict oldest
+        od[key] = None
 
         item_id = key
         self._queues[source_id].append((item_id, item, 0))

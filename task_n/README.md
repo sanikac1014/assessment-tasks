@@ -39,7 +39,7 @@ pytest -v
 
 **Token bucket**: each source gets `capacity` tokens refilled at `refill_rate` per second. `drain()` only dispatches an item if the source has tokens available.
 
-**Idempotency**: each item derives a key from its `idempotency_key` field or a SHA-256 of the payload. Re-enqueuing the same key within the dedup window is a no-op.
+**Idempotency**: each item derives a key from its `idempotency_key` field or a SHA-256 of the payload. Re-enqueuing the same key within the dedup window is a no-op (`DUPLICATE_IGNORED`). The window uses bounded FIFO eviction — when the window is full, only the single oldest key is dropped (one at a time), preventing the bulk-eviction bug where the entire seen-key set would be wiped and all prior items become re-processable.
 
 **Backpressure**: when total queued + in-flight items hits `max_in_flight`, `enqueue()` returns `BACKPRESSURE_APPLIED` instead of growing unbounded.
 

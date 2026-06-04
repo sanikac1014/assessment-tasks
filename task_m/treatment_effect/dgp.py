@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 from scipy.special import expit
 
-from .models import TruthConfig, RecoveryReport, AdjustmentMethod
-from .estimator import estimate_effect, _iptw_ate, _gcomp_ate, _naive_ate
+from .models import TruthConfig, RecoveryReport, AdjustmentMethod, PositivityViolation
+from .estimator import estimate_effect
 
 
 def generate_cohort(config: TruthConfig, n: int, seed: int) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -34,29 +34,40 @@ def generate_cohort(config: TruthConfig, n: int, seed: int) -> tuple[pd.DataFram
     return treated, control
 
 
-def recover_known_truth(config: TruthConfig, n: int, seed: int) -> RecoveryReport:
+def recover_known_truth(config: TruthConfig, n: int, seed: int, n_bootstrap: int = 500) -> RecoveryReport:
     treated, control = generate_cohort(config, n, seed)
 
-    treated_c = treated.copy()
-    control_c = control.copy()
-    treated_c["treatment"] = 1
-    control_c["treatment"] = 0
-    df = pd.concat([treated_c, control_c], ignore_index=True)
-
-    naive = _naive_ate(df)
-    iptw = _iptw_ate(df)
-    gcomp = _gcomp_ate(df)
-
-    from .estimator import _bootstrap_ci
-    iptw_ci = _bootstrap_ci(_iptw_ate, df, n_resamples=500, seed=seed)
-    gcomp_ci = _bootstrap_ci(_gcomp_ate, df, n_resamples=500, seed=seed)
+    naive_result = estimate_effect(treated, control, AdjustmentMethod.NAIVE, seed=seed, n_bootstrap=n_bootstrap)
+    iptw_result = estimate_effect(treated, control, AdjustmentMethod.IPTW, seed=seed, n_bootstrap=n_bootstrap)
+    gcomp_result = estimate_effect(treated, control, AdjustmentMethod.GCOMPUTATION, seed=seed, n_bootstrap=n_bootstrap)
 
     true_ate = config.true_ate
+    naive = naive_result.ate
+    gcomp = gcomp_result.ate
+    gcomp_ci = (gcomp_result.ci_lower, gcomp_result.ci_upper)
+
+    if isinstance(iptw_result, PositivityViolation):
+        return RecoveryReport(
+            config=config, n=n, seed=seed,
+            naive_ate=naive,
+            iptw_ate=None,
+            gcomp_ate=gcomp,
+            true_ate=true_ate,
+            naive_bias=abs(naive - true_ate),
+            iptw_bias=None,
+            gcomp_bias=abs(gcomp - true_ate),
+            iptw_ci=None,
+            gcomp_ci=gcomp_ci,
+            iptw_covers_truth=None,
+            gcomp_covers_truth=gcomp_ci[0] <= true_ate <= gcomp_ci[1],
+            iptw_positivity_ok=False,
+        )
+
+    iptw = iptw_result.ate
+    iptw_ci = (iptw_result.ci_lower, iptw_result.ci_upper)
 
     return RecoveryReport(
-        config=config,
-        n=n,
-        seed=seed,
+        config=config, n=n, seed=seed,
         naive_ate=naive,
         iptw_ate=iptw,
         gcomp_ate=gcomp,
@@ -68,4 +79,5 @@ def recover_known_truth(config: TruthConfig, n: int, seed: int) -> RecoveryRepor
         gcomp_ci=gcomp_ci,
         iptw_covers_truth=iptw_ci[0] <= true_ate <= iptw_ci[1],
         gcomp_covers_truth=gcomp_ci[0] <= true_ate <= gcomp_ci[1],
+        iptw_positivity_ok=True,
     )

@@ -44,6 +44,12 @@ pytest -v
 
 ---
 
+## Contribution Breakdown
+
+`explain()` returns a per-dimension breakdown showing why a body of evidence landed in its tier. Each `DimensionContribution.contribution` is the weighted score for that dimension. The contributions always sum to the final reported score within floating-point tolerance — including when the raw total is clamped to the [0, 1] range, in which case a `clamp_adjustment` term is included in the breakdown to account for the delta.
+
+---
+
 ## Rubric Knobs (`rubric.yaml`)
 
 | Key | What it does |

@@ -76,6 +76,11 @@ def _aggregate(items: list[EvidenceItem], rubric: Rubric) -> tuple[float, list[d
     raw_score = sum(weighted.values())
     final_score = max(0.0, min(1.0, raw_score))
 
+    # ensure contributions sum to the clamped score, not the raw total
+    clamp_delta = final_score - raw_score
+    if abs(clamp_delta) > 1e-9:
+        weighted["clamp_adjustment"] = clamp_delta
+
     return final_score, per_item, weighted
 
 

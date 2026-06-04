@@ -194,6 +194,8 @@ def diff_schema(old: Schema, new: Schema) -> SchemaDiff:
     return SchemaDiff(
         old_schema_name=old.name,
         new_schema_name=new.name,
+        old_schema_fingerprint=old.fingerprint(),
+        new_schema_fingerprint=new.fingerprint(),
         changes=changes,
         breaking_count=breaking_count,
         non_breaking_count=non_breaking_count,
@@ -306,6 +308,8 @@ def reverse(plan: MigrationPlan) -> Union[MigrationPlan, IrreversibleMigration]:
     reverse_diff = SchemaDiff(
         old_schema_name=plan.diff.new_schema_name,
         new_schema_name=plan.diff.old_schema_name,
+        old_schema_fingerprint=plan.diff.new_schema_fingerprint,
+        new_schema_fingerprint=plan.diff.old_schema_fingerprint,
         changes=[],
         breaking_count=0,
         non_breaking_count=0,
@@ -314,8 +318,10 @@ def reverse(plan: MigrationPlan) -> Union[MigrationPlan, IrreversibleMigration]:
 
 
 def provenance(plan: MigrationPlan) -> ProvenanceRecord:
-    old_hash = hashlib.sha256(plan.diff.old_schema_name.encode()).hexdigest()
-    new_hash = hashlib.sha256(plan.diff.new_schema_name.encode()).hexdigest()
+    # Use content fingerprints so two structurally different schemas that share
+    # a name produce different hashes.
+    old_hash = plan.diff.old_schema_fingerprint
+    new_hash = plan.diff.new_schema_fingerprint
     ts = "2026-01-01T00:00:00Z"  # fixed so same diff always produces same hash
 
     body = (

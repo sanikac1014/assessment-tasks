@@ -67,6 +67,8 @@ class SchemaChange(BaseModel):
 class SchemaDiff(BaseModel):
     old_schema_name: str
     new_schema_name: str
+    old_schema_fingerprint: str = ""
+    new_schema_fingerprint: str = ""
     changes: list[SchemaChange]
     breaking_count: int
     non_breaking_count: int

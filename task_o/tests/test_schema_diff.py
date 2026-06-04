@@ -1,3 +1,4 @@
+import sqlite3
 import pytest
 from schema_diff import (
     Column, Schema, DType, ColumnConstraints,
@@ -229,3 +230,79 @@ def test_breaking_count_matches_changes():
     diff = diff_schema(old, new)
     manual_breaking = sum(1 for c in diff.changes if c.breaking == BreakingStatus.BREAKING)
     assert diff.breaking_count == manual_breaking
+
+
+# ── provenance uses schema content, not name ──────────────────────────────────
+
+def test_different_schemas_same_name_produce_different_provenance_hashes():
+    # Two structurally different schemas that share a name must not collide.
+    old_a = schema("t", [col("id", DType.INT)])
+    new_a = schema("t", [col("id", DType.INT), col("x", DType.STRING)])
+
+    old_b = schema("t", [col("id", DType.FLOAT)])  # different dtype — different fingerprint
+    new_b = schema("t", [col("id", DType.FLOAT), col("x", DType.STRING)])
+
+    p_a = provenance(plan_migration(diff_schema(old_a, new_a)))
+    p_b = provenance(plan_migration(diff_schema(old_b, new_b)))
+
+    assert p_a.old_schema_hash != p_b.old_schema_hash, (
+        "Different schemas with the same name produced the same provenance hash"
+    )
+
+
+# ── fixture round-trip ────────────────────────────────────────────────────────
+
+def test_migration_fixture_round_trip_add_column():
+    """Apply the emitted SQL to a SQLite fixture and assert the result conforms."""
+    old = schema("users", [
+        col("id",    DType.INT,    nullable=False),
+        col("email", DType.STRING, nullable=False),
+    ])
+    new = schema("users", [
+        col("id",    DType.INT,    nullable=False),
+        col("email", DType.STRING, nullable=False),
+        col("notes", DType.STRING, nullable=True),
+    ])
+    diff = diff_schema(old, new)
+    plan = plan_migration(diff)
+    assert plan.is_reversible
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE users (id INTEGER NOT NULL, email TEXT NOT NULL)")
+    conn.execute("INSERT INTO users VALUES (1, 'alice@example.com')")
+    conn.execute("INSERT INTO users VALUES (2, 'bob@example.com')")
+    conn.commit()
+
+    for step in plan.steps:
+        conn.execute(step.sql)
+    conn.commit()
+
+    cursor = conn.execute("SELECT * FROM users")
+    col_names = [d[0] for d in cursor.description]
+    assert "notes" in col_names, "Added column 'notes' not present after migration"
+    rows = cursor.fetchall()
+    assert len(rows) == 2, "Existing rows were lost during migration"
+    conn.close()
+
+
+def test_migration_fixture_round_trip_rename_column():
+    """Rename migration round-trip: old column gone, new column present."""
+    old = schema("orders", [col("user_id", DType.INT)])
+    new = schema("orders", [col("userId", DType.INT)])
+    diff = diff_schema(old, new)
+    plan = plan_migration(diff)
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE orders (user_id INTEGER)")
+    conn.execute("INSERT INTO orders VALUES (42)")
+    conn.commit()
+
+    for step in plan.steps:
+        conn.execute(step.sql)
+    conn.commit()
+
+    cursor = conn.execute("SELECT * FROM orders")
+    col_names = [d[0] for d in cursor.description]
+    assert "userId" in col_names
+    assert "user_id" not in col_names
+    conn.close()

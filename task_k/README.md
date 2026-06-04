@@ -46,7 +46,8 @@ python fixtures/generate_conformant.py
 | `CHECKSUM_MISMATCH` | BLOCKING | Edit `m1/regional/cover-letter.txt` after manifest was written |
 | `MISSING_MANIFEST_ENTRY` | MAJOR | Add a new file without adding its hash to `manifest.md5` |
 | `ORPHAN_FILE` | MINOR | Add `m5/clinical/ghost.txt` to manifest but not to disk |
-| `BACKBONE_MALFORMED` | BLOCKING | Write `<ectd><unclosed>` to `backbone.xml` |
+| `MANIFEST_MALFORMED` | BLOCKING | Write binary/non-UTF-8 content to `manifest.md5`, or set an invalid `checksum_algorithm` in the spec |
+| `BACKBONE_MALFORMED` | BLOCKING | Write `<ectd><unclosed>` to `backbone.xml`, or replace `backbone.xml` with a directory |
 | `BACKBONE_MISSING_REFERENCE` | MAJOR | Add `<leaf/>` with no `href` attribute to backbone |
 | `DISK_MISSING_BACKBONE_REF` | BLOCKING | Delete `m2/summaries/overview.txt` while backbone still references it |
 | `BACKBONE_UNREFERENCED_FILE` | MINOR | Add a file on disk without adding a `<leaf>` entry in backbone |

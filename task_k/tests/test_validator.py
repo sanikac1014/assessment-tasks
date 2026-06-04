@@ -11,6 +11,7 @@ from bundle_validator import (
     DefectClass,
     Severity,
     Verdict,
+    ValidationReport,
 )
 from tests.conftest import build_conformant, BUNDLE_FILES, BACKBONE_XML
 
@@ -230,3 +231,35 @@ def test_per_module_defect_count_increments(bundle, spec):
     r = validate_bundle(bundle, spec)
     assert r.per_module_defects["m3"] > 0
     assert r.per_module_defects["m1"] == 0
+
+
+# ── crash-proof malformed inputs ──────────────────────────────────────────────
+
+def test_binary_manifest_returns_report_not_exception(tmp_path, spec):
+    root = build_conformant(tmp_path / "bundle")
+    (root / "manifest.md5").write_bytes(b"\xff\xfe binary \x00 garbage \xab\xcd")
+    r = validate_bundle(root, spec)
+    assert isinstance(r, ValidationReport)
+    assert r.verdict == Verdict.NON_CONFORMANT
+    assert DefectClass.MANIFEST_MALFORMED in classes(r)
+
+
+def test_invalid_checksum_algorithm_returns_report_not_exception(tmp_path, spec):
+    from bundle_validator.models import BundleSpec
+    root = build_conformant(tmp_path / "bundle")
+    bad_data = spec.model_dump()
+    bad_data["checksum_algorithm"] = "notareadigest"
+    bad_spec = BundleSpec.model_validate(bad_data)
+    r = validate_bundle(root, bad_spec)
+    assert isinstance(r, ValidationReport)
+    assert DefectClass.MANIFEST_MALFORMED in classes(r)
+
+
+def test_backbone_is_directory_returns_report_not_exception(tmp_path, spec):
+    root = build_conformant(tmp_path / "bundle")
+    (root / "backbone.xml").unlink()
+    (root / "backbone.xml").mkdir()
+    r = validate_bundle(root, spec)
+    assert isinstance(r, ValidationReport)
+    assert r.verdict == Verdict.NON_CONFORMANT
+    assert DefectClass.BACKBONE_MALFORMED in classes(r)

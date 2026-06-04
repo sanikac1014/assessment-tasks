@@ -125,9 +125,7 @@ def test_explain_contributions_sum_to_score(rubric):
     items = [make_item(), make_item(study_design=StudyDesign.PROSPECTIVE_COHORT)]
     ex = explain(items, rubric)
     total = sum(c.contribution for c in ex.contributions)
-    # clamp to [0,1] happens after summing, so raw sum might differ from score
-    # but contributions track the weighted dimensions before clamping
-    assert abs(total - ex.score) < 1e-6 or abs(total - sum(c.contribution for c in ex.contributions)) < 1e-9
+    assert abs(total - ex.score) < 1e-6
 
 
 def test_explain_returns_all_dimensions(rubric):
@@ -144,6 +142,23 @@ def test_explain_tier_matches_score(rubric):
     g = score([item], rubric)
     assert ex.tier == g.tier
     assert abs(ex.score - g.score) < 1e-9
+
+
+def test_explain_contributions_reconcile_when_clamped_to_zero(rubric):
+    # raw score goes negative — clamp_adjustment must bring contributions to 0.0
+    weak = [make_item(
+        study_design=StudyDesign.EXPERT_OPINION,
+        sample_size=5,
+        replication_count=0,
+        effect_size=0.01,
+        ci_width=1.5,
+        preregistered=False,
+        risk_of_bias_tier=BiasRisk.HIGH,
+    )]
+    ex = explain(weak, rubric)
+    assert ex.score == 0.0
+    total = sum(c.contribution for c in ex.contributions)
+    assert abs(total - ex.score) < 1e-6
 
 
 # ── monotonicity property tests ───────────────────────────────────────────────

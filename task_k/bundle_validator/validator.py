@@ -23,6 +23,7 @@ _SEVERITY = {
     DefectClass.CHECKSUM_MISMATCH: Severity.BLOCKING,
     DefectClass.MISSING_MANIFEST_ENTRY: Severity.MAJOR,
     DefectClass.ORPHAN_FILE: Severity.MINOR,
+    DefectClass.MANIFEST_MALFORMED: Severity.BLOCKING,
     DefectClass.BACKBONE_MALFORMED: Severity.BLOCKING,
     DefectClass.BACKBONE_MISSING_REFERENCE: Severity.MAJOR,
     DefectClass.DISK_MISSING_BACKBONE_REF: Severity.BLOCKING,
@@ -54,7 +55,7 @@ def checksum_manifest(bundle_root: Path, spec: BundleSpec = None) -> ChecksumMan
     manifest_path = bundle_root / manifest_name
     known: dict[str, str] = {}
     if manifest_path.exists():
-        for line in manifest_path.read_text().splitlines():
+        for line in manifest_path.read_text(encoding="utf-8").splitlines():
             parts = line.strip().split(None, 1)
             if len(parts) == 2:
                 known[parts[1].strip()] = parts[0].strip()
@@ -108,6 +109,11 @@ def validate_backbone(xml_path: Path, spec: BundleSpec) -> BackboneReport:
         return BackboneReport(
             well_formed=False,
             defects=[_d(DefectClass.BACKBONE_MALFORMED, xml_path.name, f"XML parse error: {exc}")],
+        )
+    except (IsADirectoryError, OSError) as exc:
+        return BackboneReport(
+            well_formed=False,
+            defects=[_d(DefectClass.BACKBONE_MALFORMED, xml_path.name, f"Backbone path is not a readable file: {exc}")],
         )
 
     root_el = tree.getroot()
@@ -210,15 +216,23 @@ def validate_bundle(bundle_root: Path, spec: BundleSpec) -> ValidationReport:
                         )
 
     # checksum validation
-    cs = checksum_manifest(bundle_root, spec)
-    for entry in cs.entries:
-        module = entry.path.split("/")[0]
-        if entry.status == "MISMATCH":
-            add(_d(DefectClass.CHECKSUM_MISMATCH, entry.path, f"Checksum mismatch: '{entry.path}'"), module)
-        elif entry.status == "MISSING_FROM_MANIFEST":
-            add(_d(DefectClass.MISSING_MANIFEST_ENTRY, entry.path, f"No manifest entry for '{entry.path}'"), module)
-        elif entry.status == "ORPHAN":
-            add(_d(DefectClass.ORPHAN_FILE, entry.path, f"Manifest references '{entry.path}' but file not found"), module)
+    cs = None
+    try:
+        cs = checksum_manifest(bundle_root, spec)
+    except UnicodeDecodeError as exc:
+        add(_d(DefectClass.MANIFEST_MALFORMED, spec.manifest_filename, f"Manifest file is not valid UTF-8: {exc}"))
+    except ValueError as exc:
+        add(_d(DefectClass.MANIFEST_MALFORMED, spec.manifest_filename, f"Checksum processing error: {exc}"))
+
+    if cs is not None:
+        for entry in cs.entries:
+            module = entry.path.split("/")[0]
+            if entry.status == "MISMATCH":
+                add(_d(DefectClass.CHECKSUM_MISMATCH, entry.path, f"Checksum mismatch: '{entry.path}'"), module)
+            elif entry.status == "MISSING_FROM_MANIFEST":
+                add(_d(DefectClass.MISSING_MANIFEST_ENTRY, entry.path, f"No manifest entry for '{entry.path}'"), module)
+            elif entry.status == "ORPHAN":
+                add(_d(DefectClass.ORPHAN_FILE, entry.path, f"Manifest references '{entry.path}' but file not found"), module)
 
     # backbone validation
     backbone_path = bundle_root / spec.backbone_filename
