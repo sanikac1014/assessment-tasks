@@ -48,6 +48,17 @@ def _rel(path: Path, base: Path) -> str:
 
 
 def checksum_manifest(bundle_root: Path, spec: BundleSpec = None) -> ChecksumManifest:
+    """Never raises — returns a malformed ChecksumManifest on any I/O or encoding error."""
+    try:
+        return _checksum_manifest_impl(bundle_root, spec)
+    except Exception as exc:
+        return ChecksumManifest(
+            entries=[], mismatches=0, missing=0, orphans=0,
+            malformed=True, malformed_reason=str(exc),
+        )
+
+
+def _checksum_manifest_impl(bundle_root: Path, spec: BundleSpec = None) -> ChecksumManifest:
     algorithm = spec.checksum_algorithm if spec else "md5"
     manifest_name = spec.manifest_filename if spec else "manifest.md5"
     backbone_name = spec.backbone_filename if spec else "backbone.xml"
@@ -152,8 +163,23 @@ def validate_backbone(xml_path: Path, spec: BundleSpec) -> BackboneReport:
 
 
 def validate_bundle(bundle_root: Path, spec: BundleSpec) -> ValidationReport:
-    defects: list[Defect] = []
+    """Never raises — any unexpected failure is converted to a structured defect report."""
     per_module: dict[str, int] = {m: 0 for m in spec.modules}
+    try:
+        return _validate_bundle_impl(bundle_root, spec, per_module)
+    except Exception as exc:
+        return ValidationReport(
+            total_leaf_count=0,
+            per_module_defects=per_module,
+            defects=[_d(DefectClass.MANIFEST_MALFORMED, None, f"Unexpected validation error: {exc}")],
+            verdict=Verdict.NON_CONFORMANT,
+        )
+
+
+def _validate_bundle_impl(
+    bundle_root: Path, spec: BundleSpec, per_module: dict[str, int]
+) -> ValidationReport:
+    defects: list[Defect] = []
 
     if not bundle_root.exists() or not bundle_root.is_dir():
         return ValidationReport(
@@ -215,16 +241,12 @@ def validate_bundle(bundle_root: Path, spec: BundleSpec) -> ValidationReport:
                             module_name,
                         )
 
-    # checksum validation
-    cs = None
-    try:
-        cs = checksum_manifest(bundle_root, spec)
-    except UnicodeDecodeError as exc:
-        add(_d(DefectClass.MANIFEST_MALFORMED, spec.manifest_filename, f"Manifest file is not valid UTF-8: {exc}"))
-    except ValueError as exc:
-        add(_d(DefectClass.MANIFEST_MALFORMED, spec.manifest_filename, f"Checksum processing error: {exc}"))
-
-    if cs is not None:
+    # checksum validation — checksum_manifest never raises; check cs.malformed instead
+    cs = checksum_manifest(bundle_root, spec)
+    if cs.malformed:
+        add(_d(DefectClass.MANIFEST_MALFORMED, spec.manifest_filename,
+               f"Manifest error: {cs.malformed_reason}"))
+    else:
         for entry in cs.entries:
             module = entry.path.split("/")[0]
             if entry.status == "MISMATCH":

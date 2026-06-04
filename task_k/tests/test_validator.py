@@ -263,3 +263,34 @@ def test_backbone_is_directory_returns_report_not_exception(tmp_path, spec):
     assert isinstance(r, ValidationReport)
     assert r.verdict == Verdict.NON_CONFORMANT
     assert DefectClass.BACKBONE_MALFORMED in classes(r)
+
+
+def test_manifest_is_directory_returns_report_not_exception(tmp_path, spec):
+    root = build_conformant(tmp_path / "bundle")
+    (root / "manifest.md5").unlink()
+    (root / "manifest.md5").mkdir()
+    r = validate_bundle(root, spec)
+    assert isinstance(r, ValidationReport)
+    assert r.verdict == Verdict.NON_CONFORMANT
+    assert DefectClass.MANIFEST_MALFORMED in classes(r)
+
+
+def test_checksum_manifest_standalone_binary_no_raise(tmp_path, spec):
+    """checksum_manifest called directly must not raise on a non-UTF-8 manifest."""
+    from bundle_validator import checksum_manifest, ChecksumManifest
+    root = build_conformant(tmp_path / "bundle")
+    (root / "manifest.md5").write_bytes(b"\xff\xfe binary \x00 garbage \xab\xcd")
+    cs = checksum_manifest(root, spec)
+    assert isinstance(cs, ChecksumManifest)
+    assert cs.malformed is True
+
+
+def test_checksum_manifest_standalone_directory_no_raise(tmp_path, spec):
+    """checksum_manifest called directly must not raise when manifest is a directory."""
+    from bundle_validator import checksum_manifest, ChecksumManifest
+    root = build_conformant(tmp_path / "bundle")
+    (root / "manifest.md5").unlink()
+    (root / "manifest.md5").mkdir()
+    cs = checksum_manifest(root, spec)
+    assert isinstance(cs, ChecksumManifest)
+    assert cs.malformed is True

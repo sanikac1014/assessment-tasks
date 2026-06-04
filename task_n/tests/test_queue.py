@@ -277,100 +277,127 @@ def test_stress_four_properties():
     """
     5 sources at different rate budgets, 200 items each (1000 total).
 
+    Enqueue and drain are interleaved so backpressure engages and releases
+    naturally rather than blocking all 1000 items at the start.  Refill rates
+    are set low enough (20–40/s) that the per-source rate ceiling is genuinely
+    binding and the timestamp check can fail if the bucket misbehaves.
+
     Four hard properties verified with real assertions:
-    (a) no source exceeds its rate budget — independent timestamp check over
-        a sliding window, not derived from the same TokenBucket that enforced it
+    (a) no source exceeds its rate budget — independent timestamp check over a
+        sliding window, separate from the TokenBucket that enforced it
     (b) no item is ever processed twice
-    (c) every accepted item ends up either processed or dead-lettered (nothing vanishes)
-    (d) backpressure engages when the in-flight ceiling is hit
+    (c) every accepted item ends up processed or dead-lettered (nothing vanishes)
+    (d) backpressure engages during enqueue and releases as items drain
     """
-    # Small burst (capacity=5) forces the bucket to actually throttle;
-    # high refill rate (500/s) lets the queue drain completely in the test window.
     SOURCES = {
-        "src_a": RateBudget(capacity=5.0, refill_rate=500.0),
-        "src_b": RateBudget(capacity=3.0, refill_rate=300.0),
-        "src_c": RateBudget(capacity=8.0, refill_rate=800.0),
-        "src_d": RateBudget(capacity=2.0, refill_rate=200.0),
-        "src_e": RateBudget(capacity=4.0, refill_rate=400.0),
+        "src_a": RateBudget(capacity=5.0, refill_rate=30.0),
+        "src_b": RateBudget(capacity=3.0, refill_rate=20.0),
+        "src_c": RateBudget(capacity=8.0, refill_rate=40.0),
+        "src_d": RateBudget(capacity=2.0, refill_rate=20.0),
+        "src_e": RateBudget(capacity=4.0, refill_rate=25.0),
     }
-    # Dedup window larger than total items so eviction cannot hide duplicates
-    q = make_queue(max_in_flight=20, max_retries=2, dedup_window=10_000)
+    # in-flight ceiling large enough that all five sources can enqueue in early
+    # rounds (before the queue fills), but small enough that backpressure still
+    # engages once the queue accumulates depth across rounds.
+    q = make_queue(max_in_flight=200, max_retries=2, dedup_window=10_000)
     for sid, budget in SOURCES.items():
         q.register_source(sid, budget)
 
-    # Enqueue 200 items per source (1000 total); track which were accepted
-    accepted_ids: set[str] = set()
-    for sid in SOURCES:
-        for i in range(200):
-            r = q.enqueue(sid, item(f"{sid}-payload-{i}"))
-            if r.status == EnqueueStatus.ACCEPTED:
-                accepted_ids.add(r.item_id)
+    # Pre-generate items so indices track which items are still pending
+    all_items = {
+        sid: [item(f"{sid}-payload-{i}") for i in range(200)]
+        for sid in SOURCES
+    }
+    item_idx = {sid: 0 for sid in SOURCES}   # next item to attempt per source
 
-    # (d) BACKPRESSURE: max_in_flight=20 means the queue should be at or past ceiling
-    bp_results = [q.enqueue("src_a", item(f"bp-probe-{i}")) for i in range(10)]
-    n_backpressured = sum(
-        1 for r in bp_results if r.status == EnqueueStatus.BACKPRESSURE_APPLIED
-    )
-    assert n_backpressured > 0, (
-        "Backpressure never triggered — max_in_flight too high or accepted_ids too few"
-    )
-
-    # Tracking consumer for (a) and (b)
     dispatch_log: Dict[str, List[float]] = defaultdict(list)
     processed_ids: list[str] = []
+    accepted_ids: set[str] = set()
+    total_skipped_budget = 0
+    total_backpressured = 0
 
     def tracking_consumer(source_id, itm):
         dispatch_log[source_id].append(time.monotonic())
         processed_ids.append(itm.derive_key())
         return True
 
-    total_skipped_budget = 0
-    for _ in range(500):
-        report = q.drain(tracking_consumer, max_items=50)
-        total_skipped_budget += report.skipped_budget
-        if q.total_queued() == 0:
+    ENQUEUE_BATCH = 15   # items to attempt per source per round
+
+    for _ in range(300):
+        # ── enqueue phase ──────────────────────────────────────────────────
+        # Only advance item_idx on ACCEPTED — backpressured items are retried
+        # next round once drain has freed space.
+        for sid in SOURCES:
+            enqueued_this_round = 0
+            while item_idx[sid] < 200 and enqueued_this_round < ENQUEUE_BATCH:
+                r = q.enqueue(sid, all_items[sid][item_idx[sid]])
+                if r.status == EnqueueStatus.ACCEPTED:
+                    accepted_ids.add(r.item_id)
+                    item_idx[sid] += 1
+                    enqueued_this_round += 1
+                elif r.status == EnqueueStatus.BACKPRESSURE_APPLIED:
+                    total_backpressured += 1
+                    break   # wait for drain to free in-flight space
+                else:
+                    item_idx[sid] += 1  # skip duplicate (shouldn't happen here)
+
+        # ── drain phase ────────────────────────────────────────────────────
+        rep = q.drain(tracking_consumer, max_items=ENQUEUE_BATCH * len(SOURCES))
+        total_skipped_budget += rep.skipped_budget
+
+        all_accepted = all(item_idx[sid] >= 200 for sid in SOURCES)
+        if all_accepted and q.total_queued() == 0:
             break
-        # Let token buckets refill between rounds; without this, rapid drain
-        # calls arrive before any tokens have refilled and stall on empty buckets.
-        time.sleep(0.005)
+
+        # 80 ms sleep gives each source 1.6–3.2 new tokens at the configured rates,
+        # keeping the token ceiling genuinely binding over each drain round.
+        time.sleep(0.08)
+
+    # (d) BACKPRESSURE: must have fired at least once during the enqueue rounds
+    assert total_backpressured > 0, (
+        "Backpressure never triggered — raise max_in_flight or lower ENQUEUE_BATCH"
+    )
 
     # (b) NO ITEM PROCESSED TWICE
     assert len(processed_ids) == len(set(processed_ids)), (
-        f"Duplicate processing: {len(processed_ids)} dispatches but only "
-        f"{len(set(processed_ids))} unique IDs"
+        f"Duplicate processing: {len(processed_ids)} dispatches, "
+        f"{len(set(processed_ids))} unique"
     )
 
-    # (c) NOTHING VANISHES: queue empty; every accepted item is processed or dead-lettered
+    # (c) NOTHING VANISHES
     assert q.total_queued() == 0, (
-        f"{q.total_queued()} items remain in queue after draining"
+        f"{q.total_queued()} items remain in queue after all rounds"
     )
     dead_ids = {dl.item_id for dl in q.dead_letters()}
-    accounted = set(processed_ids) | dead_ids
-    unaccounted = accepted_ids - accounted
+    unaccounted = accepted_ids - (set(processed_ids) | dead_ids)
     assert not unaccounted, (
         f"{len(unaccounted)} accepted items are neither processed nor dead-lettered"
     )
 
-    # Prove throttling actually occurred: drain reported at least one budget skip
+    # All five sources must have contributed a meaningful share of dispatches
+    for sid in SOURCES:
+        assert len(dispatch_log[sid]) >= 50, (
+            f"Source {sid} only dispatched {len(dispatch_log[sid])} items — "
+            "not a meaningful share; harness may not be stressing all sources"
+        )
+
+    # Token-budget throttling actually fired
     assert total_skipped_budget > 0, (
-        "Token buckets never throttled — capacity too high or all items drained "
-        "instantly without budget enforcement"
+        "Token buckets never throttled — refill rates too high to bind the ceiling"
     )
 
-    # (a) RATE BUDGET: independent check via dispatch timestamps.
-    # In any WINDOW-second interval, each source must dispatch no more than
-    # capacity + refill_rate * WINDOW items.  This is verified from the
-    # recorded timestamps, independent of the TokenBucket that enforced it.
-    WINDOW = 0.5  # seconds
+    # (a) RATE BUDGET — independent timestamp check.
+    # In any WINDOW-second interval, each source must not exceed
+    # capacity + refill_rate * WINDOW dispatches.  This is derived from the
+    # recorded wall-clock timestamps, not from the TokenBucket itself.
+    WINDOW = 0.3  # seconds — tight enough that a misbehaving bucket would be caught
     for sid, budget in SOURCES.items():
         times = sorted(dispatch_log[sid])
-        if len(times) < 2:
-            continue
-        max_in_window = budget.capacity + budget.refill_rate * WINDOW + 1  # +1 rounding slack
+        max_in_window = budget.capacity + budget.refill_rate * WINDOW + 1  # +1 rounding
         for i, t0 in enumerate(times):
             n_in_window = sum(1 for t in times[i:] if t <= t0 + WINDOW)
             assert n_in_window <= max_in_window, (
-                f"Source {sid} burst violation: {n_in_window} dispatches in "
-                f"{WINDOW}s window (budget capacity={budget.capacity}, "
-                f"rate={budget.refill_rate}/s, allowed≤{max_in_window:.1f})"
+                f"Source {sid} rate violation: {n_in_window} dispatches in "
+                f"{WINDOW}s window (capacity={budget.capacity}, "
+                f"rate={budget.refill_rate}/s, ceiling={max_in_window:.1f})"
             )

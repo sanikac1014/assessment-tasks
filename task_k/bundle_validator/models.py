@@ -60,6 +60,8 @@ class ChecksumManifest(BaseModel):
     mismatches: int
     missing: int
     orphans: int
+    malformed: bool = False
+    malformed_reason: str = ""
 
 
 class ModuleSpec(BaseModel):
